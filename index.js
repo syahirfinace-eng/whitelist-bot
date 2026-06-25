@@ -9,7 +9,7 @@ const CONFIG = {
 
   // Label field form Ticket Tool — harus SAMA PERSIS
   FORM_FIELD_PLATFORM: "Kamu menggunakan apa?",   // Java atau Bedrock
-  FORM_FIELD_USERNAME: "Apa Username MC kamu?",
+  FORM_FIELD_USERNAME: "Apa Nama Username MC kamu",
 
   // RCON Minecraft
   RCON_HOST: process.env.RCON_HOST,
