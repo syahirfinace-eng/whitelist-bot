@@ -36,7 +36,7 @@ const CONFIG = {
   SFTP_PORT: parseInt(process.env.SFTP_PORT) || 2022,
   SFTP_USER: process.env.SFTP_USER || "",          // contoh: syahirgunadarma2027_15522.41ab30e2
   SFTP_PASS: process.env.SFTP_PASS || "",          // password login panel ZelpStore
-  LOG_FILE_PATH: "/plugins/Skript/logs/link-log.txt", // path file log di server MC
+  LOG_FILE_PATH: process.env.LOG_FILE_PATH || "plugins/Skript/logs/plugins/skript/logs/link-log.txt.log", // path file log di server MC
 };
 // =====================================================
 
