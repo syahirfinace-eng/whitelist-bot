@@ -36,7 +36,7 @@ const CONFIG = {
   SFTP_PORT: parseInt(process.env.SFTP_PORT) || 2022,
   SFTP_USER: process.env.SFTP_USER || "",          // contoh: syahirgunadarma2027_15522.41ab30e2
   SFTP_PASS: process.env.SFTP_PASS || "",          // password login panel ZelpStore
-  LOG_FILE_PATH: process.env.LOG_FILE_PATH || "plugins/Skript/logs/plugins/skript/logs/link-log.txt.log", // path file log di server MC
+  LOG_FILE_PATH: "/plugins/Skript/logs/link-log.txt", // path file log di server MC
 };
 // =====================================================
 
@@ -417,6 +417,7 @@ client.on(Events.MessageCreate, async (message) => {
     }
 
     const targetId = mentionMatch[1];
+    const processing = await message.reply(`⏳ Memproses reset untuk <@${targetId}>...`);
 
     try {
       // Ambil data player dulu untuk info
@@ -426,31 +427,74 @@ client.on(Events.MessageCreate, async (message) => {
       );
 
       if (data.length === 0) {
-        return message.reply(`⚠️ Data <@${targetId}> tidak ditemukan di database.`);
+        return processing.edit(`⚠️ Data <@${targetId}> tidak ditemukan di database.`);
       }
 
       const player = data[0];
+      const mcUsername = player.mc_username;
+      const mcUuid = player.mc_uuid || null;
+      const results = [];
 
-      // Hapus dari Supabase
-      await supabaseRequest("DELETE", `players?discord_id=eq.${targetId}`);
+      // ── 1. Unwhitelist dari MC via RCON ──
+      try {
+        const rconReset = new Rcon({
+          host: CONFIG.RCON_HOST,
+          port: CONFIG.RCON_PORT,
+          password: CONFIG.RCON_PASSWORD,
+        });
+        await rconReset.connect();
 
-      await message.reply(
-        `✅ Data berhasil dihapus!
-` +
-        `👤 Discord: <@${targetId}>
-` +
-        `🎮 MC: \`${player.mc_username}\`
-` +
-        `🔗 Status: ${player.is_linked ? "Sudah linked" : "Belum linked"}
+        // Unwhitelist (bedrock pakai fwhitelist, java pakai whitelist)
+        if (player.is_bedrock) {
+          await rconReset.send(`fwhitelist remove ${mcUsername}`);
+        } else {
+          await rconReset.send(`whitelist remove ${mcUsername}`);
+        }
 
-` +
+        // Hapus variabel Skript linked dan linkcode
+        if (mcUuid) {
+          await rconReset.send(`skript eval delete {linked::${mcUuid}}`);
+          await rconReset.send(`skript eval delete {player_discord::${mcUuid}}`);
+        }
+        await rconReset.send(`skript eval delete {linkcode::${mcUsername}}`);
+        await rconReset.send(`skript eval delete {linkdiscord::${mcUsername}}`);
+
+        await rconReset.end();
+        results.push("✅ Unwhitelist MC");
+        results.push("✅ Reset variabel Skript");
+        console.log(`🔄 RCON reset selesai untuk ${mcUsername}`);
+      } catch (rconErr) {
+        results.push(`⚠️ RCON gagal: ${rconErr.message}`);
+        console.error("⚠️ RCON reset gagal:", rconErr.message);
+      }
+
+      // ── 2. Hapus dari Supabase ──
+      try {
+        await supabaseRequest("DELETE", `players?discord_id=eq.${targetId}`);
+        results.push("✅ Hapus data Supabase");
+      } catch (dbErr) {
+        results.push(`⚠️ Supabase gagal: ${dbErr.message}`);
+      }
+
+      // ── 3. Hapus dari link-log.txt via SFTP ──
+      try {
+        const { removed } = await removeFromLog(mcUsername);
+        results.push(`✅ Hapus log (${removed.length} baris)`);
+      } catch (sftpErr) {
+        results.push(`⚠️ Log gagal: ${sftpErr.message}`);
+      }
+
+      await processing.edit(
+        `🔄 **Reset selesai untuk <@${targetId}>!**\n` +
+        `🎮 MC: \`${mcUsername}\`\n\n` +
+        results.join("\n") + "\n\n" +
         `Player sekarang bisa daftar ulang via ticket.`
       );
 
-      console.log(`🗑️ Reset: Discord ${targetId} (${player.mc_username}) oleh ${message.author.username}`);
+      console.log(`🗑️ Full reset: Discord ${targetId} (${mcUsername}) oleh ${message.author.username}`);
     } catch (err) {
       console.error("❌ Gagal reset user:", err.message);
-      message.reply(`❌ Gagal hapus data: ${err.message}`);
+      processing.edit(`❌ Gagal reset: ${err.message}`);
     }
     return;
   }
